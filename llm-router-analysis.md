@@ -189,6 +189,6 @@ vLLM SR 主要适配自建推理集群，不适合通过 API 中转商（CommonS
 | #16 | feedback prior_n=20 单用户无效 | 已开 |
 | #17 | tool_use.id sanitization（Fixes #12） | 已开 PR |
 
-Teknium 4/20 说要删整个 routing 功能。我们的 issue 分析是对的，但他的结论比我们激进——我们说修，他说删。
+Teknium 4/20 说"I never believed in model routing for tasks. I'll remove"——但这说的是 Hermes 自己的 routing，跟 UncommonRoute 无关。UR 是 CommonstackAI 的独立项目。
 
 PR #17 由 CC 写代码（_sanitize_tool_id 函数 + 8 个测试），空系 review 后从 iamagenius00 fork 提交。
