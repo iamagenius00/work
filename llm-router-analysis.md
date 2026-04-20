@@ -136,7 +136,52 @@ vLLM SR：分层路由。
 
 ---
 
-## 四、我们提了什么
+## 四、vLLM 和 vLLM SR 的技术关系
+
+### vLLM 本体
+
+LLM serving framework，解决单模型推理效率。核心技术 PagedAttention——KV cache 显存从连续分配改成分页（类似 OS 虚拟内存），同一张 GPU 并发更多请求，吞吐比 HuggingFace 原生高几倍。
+
+定位：一个模型一个 vLLM 进程，暴露 OpenAI 兼容 API。
+
+### vLLM SR 的定位
+
+vLLM 生态的请求层控制平面。不做推理，做推理前的决策。链路：
+
+1. **信号提取**：本地 BERT 分类器分析请求（reasoning? PII? jailbreak? code?），毫秒级
+2. **决策匹配**：信号组合匹配预定义 routing decision（keyword=sql AND category=code → code-specialist）
+3. **模型选择**：多候选时用算法——static / ELO / Thompson Sampling / POMDP 等
+4. **Session affinity**：首轮完整决策，后续粘着，跨 session 重选
+5. **Cache affinity**：KV cache 已有上下文的模型微加权（最大 0.14），tie-breaker 不是 override
+
+### 为什么用 Envoy
+
+Envoy ExtProc（External Processor）。Envoy 做 TLS、连接池、重试、可观测性、转发。SR 只做决策。
+
+请求流：客户端 → Envoy → ExtProc → Go Router（信号+决策）→ Envoy 转发到 vLLM 实例
+
+### vLLM 为什么要做路由
+
+1. **生态补全**：多模型、多硬件（NVIDIA+AMD）、多数据中心，不提供官方方案就碎片化
+2. **状态耦合**：路由需要 vLLM 内部状态（KV cache 命中、队列深度），纯外部路由做不到 cache affinity
+3. **组织层**：vllm-project org 下，共享 maintainer
+
+### 绑定关系
+
+- 协议：假设后端 OpenAI 兼容（vLLM 原生）
+- 运维：CLI 可管理 vLLM 实例生命周期
+- 状态：cache affinity 依赖 vLLM 内部感知
+- 可以路由到非 vLLM 后端，但最佳体验搭配 vLLM
+
+### 结论
+
+vLLM SR 主要适配自建推理集群，不适合通过 API 中转商（CommonStack/OpenRouter）调用云端模型。Anthropic 只做出口转换且不支持 streaming，暂不深入。
+
+值得带走的设计思路：session affinity 粒度选择、cache affinity 作为 tie-breaker、信号分类驱动路由而非纯规则。
+
+---
+
+## 五、我们提了什么
 
 | Issue | 内容 | 状态 |
 |-------|------|------|
